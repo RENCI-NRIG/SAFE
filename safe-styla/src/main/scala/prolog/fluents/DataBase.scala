@@ -1,7 +1,7 @@
 package prolog.fluents
 
 //import java.io._
-import scala.collection.mutable.{LinkedHashMap, Map => MutableMap}
+import scala.collection.mutable.{LinkedHashMap, HashSet, Map => MutableMap}
 
 import prolog.terms._
 import prolog.interp.Prog
@@ -17,12 +17,15 @@ object IndexTypes {
 }
 
 class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] with LazyLogging {
+
   import IndexTypes._
+
   var numstmts = 0
 
-  val allByPrimary = MutableMap[String, Deque[List[Term]]]() 
+  val allByPrimary = MutableMap[String, Deque[List[Term]]]()
   val factsBySecondary = MutableMap[String, Deque[List[Term]]]()
-  val rulesByPrimary = MutableMap[String, Deque[List[Term]]]() 
+  val rulesByPrimary = MutableMap[String, Deque[List[Term]]]()
+  val factSets = new HashSet[Int]()
 
   def this() = this("")
 
@@ -32,14 +35,14 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
   def this(cs: List[List[Term]]) {
     this()
     addAll(cs)
-  } 
+  }
 
   def this(name: String, cs: List[List[Term]]) {
     this()
     addAll(cs)
   }
 
-  /** 
+  /**
    * @DeveloperAPI
    */
   override def toString(): String = {
@@ -124,17 +127,17 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
     //val x = c.head.ref.asInstanceOf[Const]
     //Key(x.sym, x.len)
     val h = c.head.ref
-    val x: String = 
-      if(h.isInstanceOf[Fun]) {
+    val x: String =
+      if (h.isInstanceOf[Fun]) {
         val f = h.asInstanceOf[Fun]
         xindex match {
           case PRIMARY_INDEX => f.primaryIndex()
           case SECONDARY_INDEX => f.secondaryIndex()
-          case _ => throw new RuntimeException(s"Unrecognized index type ${xindex}") 
+          case _ => throw new RuntimeException(s"Unrecognized index type ${xindex}")
         }
       }
       else { // We need to keey this branch to deal with some Styla stuff, such as \+ 
-             // Example: tagAccessTest in safe-apps/safe-styla/defconWithList.slang
+        // Example: tagAccessTest in safe-apps/safe-styla/defconWithList.slang
         //println(s"statement starts with a const: ${c}")
         val cc = h.asInstanceOf[Const]
         s"${cc.sym}${cc.len}"
@@ -155,9 +158,9 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
   }
 
   def isFact(c: CLAUSE): Boolean = {
-    if(c.length == 1) {
+    if (c.length == 1) {
       c.head.ref match {
-        case f: Fun => if(f.allParamsNonvar) true else false
+        case f: Fun => if (f.allParamsNonvar) true else false
         case _ => false
       }
     } else {
@@ -167,24 +170,31 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
 
   def add(c: CLAUSE) {
     val k = key(c, PRIMARY_INDEX)
-    val cs = allByPrimary.getOrElseUpdate(k, new Deque[CLAUSE]())
-    cs.add(c)
-    if(isFact(c)) {  // fact
-      val k2 = key(c, SECONDARY_INDEX)
-      val cs2 = factsBySecondary.getOrElseUpdate(k2, new Deque[CLAUSE]())
-      cs2.add(c)
+    if (isFact(c)) { // fact
+      val hashCode = c.hashCode()
+      if (!factSets.contains(hashCode)) {
+        factSets.add(hashCode)
+        val cs = allByPrimary.getOrElseUpdate(k, new Deque[CLAUSE]())
+        cs.add(c)
+        val k2 = key(c, SECONDARY_INDEX)
+        val cs2 = factsBySecondary.getOrElseUpdate(k2, new Deque[CLAUSE]())
+        cs2.add(c)
+        numstmts += 1
+      }
     } else { // rule
+      val cs = allByPrimary.getOrElseUpdate(k, new Deque[CLAUSE]())
+      cs.add(c)
       val cs1 = rulesByPrimary.getOrElseUpdate(k, new Deque[CLAUSE]())
       cs1.add(c)
+      numstmts += 1
     }
-    numstmts += 1
   }
 
   def push(c: CLAUSE) {
     val k = key(c, PRIMARY_INDEX)
     val cs = allByPrimary.getOrElseUpdate(k, new Deque[CLAUSE]())
     cs.push(c)
-    if(isFact(c)) {  // fact
+    if (isFact(c)) { // fact
       val k2 = key(c, SECONDARY_INDEX)
       val cs2 = factsBySecondary.getOrElseUpdate(k2, new Deque[CLAUSE]())
       cs2.push(c)
@@ -201,12 +211,12 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
     val all_r1 = del1(h, k1, allByPrimary)
     val rule_r1 = del1(h, k1, rulesByPrimary)
     val k2 = key(c, SECONDARY_INDEX)
-    val fact_r2 = del1(h, k2, factsBySecondary)  
-    if(all_r1 != null)  return all_r1
-    if(fact_r2 != null)  return fact_r2
-    if(rule_r1 != null)  return rule_r1
+    val fact_r2 = del1(h, k2, factsBySecondary)
+    if (all_r1 != null) return all_r1
+    if (fact_r2 != null) return fact_r2
+    if (rule_r1 != null) return rule_r1
     null
-  } 
+  }
 
   def del1(h: Term, k: String, table: MutableMap[String, Deque[List[Term]]]): List[Term] = {
     val xss = table.get(k)
@@ -214,7 +224,9 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
       case None => null
       case Some(css) => {
         val trail = new Trail()
-          def is_matching(cs: CLAUSE) = h.matches(cs.head, trail)
+
+        def is_matching(cs: CLAUSE) = h.matches(cs.head, trail)
+
         val maybeCs = css.dequeueFirst(is_matching)
         maybeCs match {
           case None => null
@@ -226,7 +238,7 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
 
   def delAll(h: Term) {
     var deleted: List[Term] = del1(h)
-    while (deleted != null) { 
+    while (deleted != null) {
       numstmts -= 1
       deleted = del1(h)
     }
@@ -239,7 +251,7 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
     cleanUpKey(k1, allByPrimary)
     cleanUpKey(k1, rulesByPrimary)
     val k2 = key(c, SECONDARY_INDEX)
-    cleanUpKey(k2, factsBySecondary)   
+    cleanUpKey(k2, factsBySecondary)
   }
 
   def cleanUpKey(k: String, table: MutableMap[String, Deque[List[Term]]]) {
@@ -266,12 +278,12 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
     var matches = new Deque[CLAUSE]()
     val k1 = h.primaryIndex()
     //logger.info(s"[DataBase getMatches] h:${h}  k1:${k1}  isFirstParamConstant:${h.isFirstParamConstant}")
-    if(h.isFirstParamConstant()) {
+    if (h.isFirstParamConstant()) {
       val k2 = h.secondaryIndex()
       val facts = factsBySecondary.get(k2) match {
         case None => new Deque[CLAUSE]()
         case Some(cs) => cs
-      }  
+      }
       val rules = rulesByPrimary.get(k1) match {
         case None => new Deque[CLAUSE]()
         case Some(cs) => cs
@@ -279,24 +291,24 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
       //logger.info(s"[DataBase getMatches] k2:${k2}")
       //logger.info(s"[DataBase getMatches] facts:${facts}")
       //logger.info(s"[DataBase getMatches] rules:${rules}")
-      if(!facts.isEmpty && rules.isEmpty) return facts
-      if(facts.isEmpty && !rules.isEmpty) return rules
+      if (!facts.isEmpty && rules.isEmpty) return facts
+      if (facts.isEmpty && !rules.isEmpty) return rules
       matches.add(facts)
       matches.add(rules)
     } else {
       matches = allByPrimary.get(k1) match {
-        case None => new Deque[CLAUSE]() 
+        case None => new Deque[CLAUSE]()
         case Some(cs) => cs
       }
     }
-    if(matches.isEmpty && verbose) {
-        IO.warnmes("call to undefined predicate: " + k1)
-        IO.warnmes(s"Styla database: \n$this")
+    if (matches.isEmpty && verbose) {
+      IO.warnmes("call to undefined predicate: " + k1)
+      IO.warnmes(s"Styla database: \n$this")
     }
     return matches
   }
 
-  def revVars() = {  // Reverse var map
+  def revVars() = { // Reverse var map
     val I = vars.iterator
     val revMap = new LinkedHashMap[Var, String]
     while (I.hasNext) {
@@ -305,6 +317,10 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
       revMap.put(v, s_)
     }
     revMap
+  }
+
+  override def size(): Int = {
+    numstmts
   }
 
 }

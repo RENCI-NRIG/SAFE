@@ -2,7 +2,7 @@ package prolog.terms
 import prolog.interp.Prog
 import prolog.io.IO
 import prolog.Config
-import scala.collection.mutable.LinkedHashSet
+import scala.collection.mutable.{LinkedHashSet, ListBuffer}
 import com.typesafe.scalalogging.LazyLogging
 
 class Fun(sym: String, var args: Array[Term]) extends Const(sym) with LazyLogging {
@@ -76,6 +76,40 @@ class Fun(sym: String, var args: Array[Term]) extends Const(sym) with LazyLoggin
     }
   }
 
+  def getAllVars(): List[Term] = {
+    val vars = ListBuffer[Term]()
+    if (isSpk) {
+      if (args.length == 2) {
+        getArg(1) match {
+          case f: Fun =>
+            try {
+              getArg(0) match {
+                case c: Var =>
+                  vars += c
+                case _ =>
+              }
+            }
+            catch {
+              case e: Exception =>
+                println(s"${e}")
+            }
+            (vars ++ f.getAllVars()).toList
+          case _ => throw new RuntimeException(s"Atom does not contain a valid predicate: ${getArg(1)}")
+        }
+      } else {
+        throw new RuntimeException(s"Invalid atom body: ${this}")
+      }
+    } else {
+      for (i <- 0 to args.length - 1) {
+        getArg(i) match {
+          case c: Var => vars += c
+          case _ =>
+        }
+      }
+      vars.toList
+    }
+  }
+
   def getIndex(): String = {
     Config.config.indexing match {
       case "primary" => primaryIndex()
@@ -105,12 +139,22 @@ class Fun(sym: String, var args: Array[Term]) extends Const(sym) with LazyLoggin
     }
   }
 
+  // could use the same StringBuffer when recursing
   def secondaryIndex(): String = {
     if(isSpk) {
       if(args.length == 2) {
         getArg(1) match {
-          case f: Fun => f.secondaryIndex() 
-          case _ => throw new RuntimeException(s"Atom does not contain a valid predicate: ${getArg(1)}") 
+          case f: Fun =>
+            val sb = new StringBuffer()
+            getArg(0) match {
+              case speaker: Cons =>
+                sb.append(speaker.sym)
+                sb.append(f.secondaryIndex())
+                sb.toString
+              case _ =>
+                f.secondaryIndex()
+            }
+          case _ => throw new RuntimeException(s"Atom does not contain a valid predicate: ${getArg(1)}")
         }
       } else {
         throw new RuntimeException(s"Invalid atom body: ${this}")
