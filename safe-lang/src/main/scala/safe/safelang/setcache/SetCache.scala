@@ -186,7 +186,7 @@ class SetCache (localSetTable: SafeTable[SetId, SlogSet], safeSetsClient: SafeSe
       true //throw UnSafeException(s"Validating a local slogset? Issuer is undefined: ${slogset.issuer}")
     }
     else if (slogset.signature.get.isEmpty) {  // empty signature
-      if(Config.config.unsignedCertsOn) { // all certs must be signed 
+      if(!Config.config.unsignedCertsOn) { // all certs must be signed 
         logger.info(s"Unsigned certificate: ${slogset}")
         false
       } else { // pass unsigned cert

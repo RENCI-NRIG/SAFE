@@ -40,7 +40,9 @@ object Cons {
     to_string( { x => x.toString }, c, vmap)
   }
 
-  val symPattern = """([a-z][a-zA-Z0-9]*)""".r
+  val symPattern = """([a-z]\w*)""".r
+  // val consPattern = """(^\[[_a-zA-Z][\w\s,]*\]$)""".r
+  val consPattern = """(^\[.*\]$)""".r
 
   def elementToString(f: Term => String, e: Term, vmap: LinkedHashMap[Var, String]): String = {
     if(e.isInstanceOf[Var] && vmap.contains(e.asInstanceOf[Var])) { 
@@ -49,7 +51,8 @@ object Cons {
       val _t = f(e)
       _t match {
         case symPattern(t) => _t
-        case _ => s"'${_t}'" 
+        case consPattern(t) => _t // println(s"Cons pattern matched: ${_t}"); scala.io.StdIn.readLine(); _t
+        case _ => s"'${_t}'" // println(s"added single quotes: ${_t}   ${_t.getClass}"); scala.io.StdIn.readLine(); s"'${_t}'" 
       }
     }
   }
@@ -70,7 +73,10 @@ object Cons {
         s.append(",")
       else {
         more = false
-        if (x != Const.nil) {
+        // if (x != Const.nil) {
+        // println(s"\n Last element in a list:   x=$x    x.getClass=${x.getClass}     list:${c}")
+        if(!Const.isNil(x)) {
+          // println(s"\n Not Nil:   x=$x    x.getClass=${x.getClass}     list=${c}")
           s.append("|")
           val tx = elementToString(f, x, vmap) 
           s.append(tx)
@@ -94,7 +100,8 @@ object Cons {
         s.append(",")
       else {
         more = false
-        if (x != Const.nil) {
+        // if (x != Const.nil) {
+        if (!Const.isNil(x)) {
           s.append("|")
           s.append(f(x))
         }

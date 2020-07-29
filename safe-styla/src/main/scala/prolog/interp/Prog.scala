@@ -213,8 +213,8 @@ class Prog(var db: DataBase) extends TermSource with LazyLogging {
 
         val res = pushUnfolder(newgoal)
 
-        println(s"Pushing an unfolder to the orStack: ${res._1}  {res._2}")
-        println(s"orStack: ${orStack}")
+        //println(s"Pushing an unfolder to the orStack: ${res._1}  {res._2}")
+        //println(s"orStack: ${orStack}")
 
         if (null != res._2) return res._2
         newgoal = res._1
