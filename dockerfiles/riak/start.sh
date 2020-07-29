@@ -4,6 +4,7 @@ internal_ip=`hostname -i`
 sed -i "/^listener.http.internal/ s:.*:listener.http.internal = ${internal_ip}\:8098:" /etc/riak/riak.conf
 sed -i "/^listener.protobuf.internal/ s:.*:listener.protobuf.internal = ${internal_ip}\:8087:" /etc/riak/riak.conf
 sed -i "/^nodename = / s:.*:nodename = riak@${internal_ip}:" /etc/riak/riak.conf
+#sed -i "s/storage_backend = bitcask/storage_backend = leveldb/" /etc/riak/riak.conf
 
 # Initialize Riak with a SAFE bucket
 riak start
