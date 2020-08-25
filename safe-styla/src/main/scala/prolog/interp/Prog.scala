@@ -5,6 +5,8 @@ import prolog.io.IO
 import prolog.terms._
 import com.typesafe.scalalogging.LazyLogging
 
+import scala.collection.mutable.{ListBuffer, HashMap, HashSet}
+
 /**
  * The class Prog implements instances of Prolog interpreters, wrapped up as self-contained
  * first-class LogicEngines, usable as Scala or Akka actors. It is parameterized by a
@@ -63,6 +65,9 @@ class Prog(var db: DataBase) extends TermSource with LazyLogging {
   var isStopped = true
   private var justBuiltins = false
   var popped = true
+  val unfolded = HashMap[Int, Unfolder]()
+  val cacheResult = HashMap[Int, Boolean]()
+
 
   def clearAll() {
     answer = null
@@ -73,11 +78,13 @@ class Prog(var db: DataBase) extends TermSource with LazyLogging {
     trail.clear()
     orStack.clear()
     copier.clear()
+    unfolded.clear()
+    cacheResult.clear()
   }
 
   /**
    * Query setup: setting the answer handler by a
-   * suggested input answer or the conjunctive 
+   * suggested input answer or the conjunctive
    * goals of the query.
    */
   def set_query(answer: Term, query: GOAL) {
@@ -113,6 +120,31 @@ class Prog(var db: DataBase) extends TermSource with LazyLogging {
     set_query(null, query: GOAL)
   }
 
+  def goalHeadNoVar(g: GOAL): Boolean = {
+    g match {
+      case g0 :: xs =>
+        g0 match {
+          case f: Fun =>
+            val headVars = f.getAllVars()
+            if(headVars.nonEmpty) {
+              for (t <- xs) {
+                t match {
+                  case ft: Fun =>
+                    val tailVars: ListBuffer[Term] = ft.getAllVars()
+                    if (tailVars.intersect(headVars).nonEmpty &&
+                      !unfolded.contains(ft.objectHashCode)) {
+                        return false
+                    }
+                }
+              }
+            }
+            true
+        }
+      case _ =>
+        false
+    }
+  }
+
   /*
    * Push a matching unfolder to the top of the orStack according to
    * the head of the goal list. 
@@ -130,6 +162,14 @@ class Prog(var db: DataBase) extends TermSource with LazyLogging {
         // we assume the stub return(_) is defined
         case f: Answer =>
           return_term = f.getArg(0)
+        case f0: Fun =>
+          val hash = f0.objectHashCode
+          if (cacheResult.contains(hash)) {
+            if (cacheResult(hash)) {
+              pushUnfolder(g.tail)
+            }
+            return (g, return_term)
+          }
         case _ => ()
       }
 
@@ -197,32 +237,20 @@ class Prog(var db: DataBase) extends TermSource with LazyLogging {
     //println(s"[Prog getElement] query=${Term.printClause(query)}   |  answer=${Term.printClause(List(answer))}")
     while (more && !orStack.isEmpty && depth<=DEPTH_LIMIT) {
       val step: Unfolder = orStack.top
+      newgoal = step.nextGoal()
 
-      if (step.isLastClause && !orStack.isEmpty) {
-        orStack.pop()
-        popped = true
-      } else
-        popped = false
-
-      if(popped == false) { // Got an inferable unfolder
-        //println("step="+step)
-        newgoal = step.nextGoal()
-     
-        // Don't immediately pop an exhausted unfolder
-        // This keeps the entire proof of an inference on the stack
-
+      if (newgoal == null && !orStack.isEmpty) {
+        orStack.pop();
+      } else {
         val res = pushUnfolder(newgoal)
-
-        //println(s"Pushing an unfolder to the orStack: ${res._1}  {res._2}")
-        //println(s"orStack: ${orStack}")
-
-        if (null != res._2) return res._2
+        if (null != res._2) {
+          return res._2
+        }
         newgoal = res._1
-
         if (Nil == newgoal) more = false
         // "no push when null" eventually stops it but only when orStack.isEmpty
-        depth += 1
       }
+      depth += 1
     }
 
     if(depth > DEPTH_LIMIT) {

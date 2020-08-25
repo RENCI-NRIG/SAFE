@@ -1,7 +1,7 @@
 package prolog.fluents
 
 //import java.io._
-import scala.collection.mutable.{LinkedHashMap, Map => MutableMap}
+import scala.collection.mutable.{HashSet, LinkedHashMap, Map => MutableMap}
 
 import prolog.terms._
 import prolog.interp.Prog
@@ -22,7 +22,8 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
 
   val allByPrimary = MutableMap[String, Deque[List[Term]]]() 
   val factsBySecondary = MutableMap[String, Deque[List[Term]]]()
-  val rulesByPrimary = MutableMap[String, Deque[List[Term]]]() 
+  val rulesByPrimary = MutableMap[String, Deque[List[Term]]]()
+  val factSets = HashSet[Int]()
 
   def this() = this("")
 
@@ -103,7 +104,7 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
             else
               IO.warnmes("bad directive: " + c)
 
-          case other => exec_cmd(b :: bs)
+          case _ => exec_cmd(b :: bs)
         }
         true
       }
@@ -167,15 +168,23 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
 
   def add(c: CLAUSE) {
     val k = key(c, PRIMARY_INDEX)
-    val cs = allByPrimary.getOrElseUpdate(k, new Deque[CLAUSE]())
-    cs.add(c)
-    if(isFact(c)) {  // fact
-      val k2 = key(c, SECONDARY_INDEX)
-      val cs2 = factsBySecondary.getOrElseUpdate(k2, new Deque[CLAUSE]())
-      cs2.add(c)
+    if (isFact(c)) { // fact
+      val hashCode = c.hashCode()
+      if (!factSets.contains(hashCode)) {
+        factSets.add(hashCode)
+        val cs = allByPrimary.getOrElseUpdate(k, new Deque[CLAUSE]())
+        cs.add(c)
+        val k2 = key(c, SECONDARY_INDEX)
+        val cs2 = factsBySecondary.getOrElseUpdate(k2, new Deque[CLAUSE]())
+        cs2.add(c)
+        numstmts += 1
+      }
     } else { // rule
+      val cs = allByPrimary.getOrElseUpdate(k, new Deque[CLAUSE]())
+      cs.add(c)
       val cs1 = rulesByPrimary.getOrElseUpdate(k, new Deque[CLAUSE]())
       cs1.add(c)
+      numstmts += 1
     }
     numstmts += 1
   }
@@ -193,6 +202,10 @@ class DataBase(fname: String) extends LinkedHashMap[String, Deque[List[Term]]] w
       cs1.push(c)
     }
     numstmts += 1
+  }
+
+  override def size(): Int = {
+    numstmts
   }
 
   def del1(h: Term): List[Term] = {
