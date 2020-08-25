@@ -1,5 +1,6 @@
 package prolog.interp
 
+import prolog.terms.Fun
 import prolog.terms.SystemObject
 import prolog.terms.Term
 import prolog.terms.Trail
@@ -33,21 +34,66 @@ class Unfolder(prog: Prog, val goal: List[Term], matchingClauses: List[List[Term
 
         //prog.copier.clear
         //val ds = Term.copyList(cs, prog.copier)
-        val ds = Term.copyList(cs)
+        if (prog.goalHeadNoVar(goal)) {
+          var hash = 0
+          g0 match {
+            case f: Fun =>
+              hash = f.objectHashCode
+            case _ =>
+              hash = g0.hashCode
+          }
+          if (prog.unfolded.contains(hash) && prog.unfolded.get(hash).get !=
+            this) {
+            if (!prog.cacheResult.contains(hash)) {
+              prog.cacheResult.put(hash, true)
+              prog.orStack.pop()
+              while (prog.orStack.pop().goal.head != g0) {
+                // pop until we first meet the goal
+              }
+            }
+            while (atClause.hasNext) {
+              atClause.next()
+            }
+            //we can safely pop from or stack until we meet the unfolder
+            // whose first goal is g0
+            if (prog.cacheResult(hash)) {
+              return xs
+            } else {
+              return null
+            }
+          }
+          prog.unfolded.put(hash, this)
+          val ds = Term.copyList(cs)
+          // Check copy list
+          logger.debug(s"[Unfolder unfoldWith]  copylist= ${Term.printClause(ds)}")
 
-        // Check copy list
-        logger.info(s"[Unfolder unfoldWith]  copylist= ${Term.printClause(ds)}")
+          //if (cs.head.matches(g0, trail)) {
+          val oldtop = trail.size
+          if (ds.head.unify(g0, trail)) { // copy first to avoid a concurrency bug
+            //ds.head.unify(g0, trail)
+            logger.debug(s"[Unfolder unfoldWith]  unification succeeds  new goals= ${ds.tail ++ xs}")
+            return ds.tail ++ goal
+          } else { // unification fails
+            logger.debug(s"[Unfolder unfoldwith] ${ds.head} cannot be unified with ${g0}")
+            trail.unwind(oldtop)
+            return null
+          }
+        } else {
+          val ds = Term.copyList(cs)
+          // Check copy list
+          logger.debug(s"[Unfolder unfoldWith]  copylist= ${Term.printClause(ds)}")
 
-        //if (cs.head.matches(g0, trail)) {
-        val oldtop = trail.size
-        if (ds.head.unify(g0, trail)) { // copy first to avoid a concurrency bug
-          //ds.head.unify(g0, trail)
-          logger.info(s"[Unfolder unfoldWith]  unification succeeds  new goals= ${ds.tail ++ xs}")
-          ds.tail ++ xs
-        } else { // unification fails
-          logger.info(s"[Unfolder unfoldwith] ${ds.head} cannot be unified with ${g0}")
-          trail.unwind(oldtop)
-          null
+          //if (cs.head.matches(g0, trail)) {
+          val oldtop = trail.size
+          if (ds.head.unify(g0, trail)) { // copy first to avoid a concurrency bug
+            //ds.head.unify(g0, trail)
+            logger.debug(s"[Unfolder unfoldWith]  unification succeeds  new goals= ${ds.tail ++ xs}")
+            ds.tail ++ xs
+          } else { // unification fails
+            logger.debug(s"[Unfolder unfoldwith] ${ds.head} cannot be unified with ${g0}")
+            trail.unwind(oldtop)
+            null
+          }
         }
     }
     // Nil: no more work
@@ -69,6 +115,24 @@ class Unfolder(prog: Prog, val goal: List[Term], matchingClauses: List[List[Term
       newgoal = unfoldWith(clause, prog.trail)
       //if(newgoal != null)
         //println(s"\n[Unfolder nextGoal] newgoal= ${Term.printClause(newgoal)}")
+    }
+    // if the head of the goal "all params non-var" at the end of this unfolder,
+    // the result of the head is either true or false. If it is true, we
+    // would have already saved the result in prog.cacheResult. Therefore, it
+    // the result is not cached when we reach the end, that means it
+    // evaluates to false.
+    if(newgoal == null && !atClause.hasNext) {
+      var hash = 0
+      goal.head match {
+        case f:Fun =>
+          hash = f.objectHashCode
+        case _ =>
+          hash = goal.head.hashCode()
+      }
+
+      if (prog.unfolded.contains(hash) && !prog.cacheResult.contains(hash)) {
+        prog.cacheResult.put(hash, false)
+      }
     }
     newgoal
   }

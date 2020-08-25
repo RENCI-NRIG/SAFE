@@ -2,7 +2,7 @@ package prolog.terms
 import prolog.interp.Prog
 import prolog.io.IO
 import prolog.Config
-import scala.collection.mutable.LinkedHashSet
+import scala.collection.mutable.{LinkedHashSet, ListBuffer}
 import com.typesafe.scalalogging.LazyLogging
 
 class Fun(sym: String, var args: Array[Term]) extends Const(sym) with LazyLogging {
@@ -73,6 +73,39 @@ class Fun(sym: String, var args: Array[Term]) extends Const(sym) with LazyLoggin
         }
       }
       res
+    }
+  }
+
+  def getAllVars(): ListBuffer[Term] = {
+    val vars = ListBuffer[Term]()
+    if(isSpk) {
+      if(args.length == 2) {
+        getArg(1) match {
+          case f: Fun =>
+            try{
+            getArg(0) match {
+              case c: Var =>
+                vars += c
+              case _ =>
+            }}
+            catch {
+              case e: Exception =>
+                println(s"${e}")
+            }
+            (vars ++ f.getAllVars())
+          case _ => throw new RuntimeException(s"Atom does not contain a valid predicate: ${getArg(1)}")
+        }
+      } else {
+        throw new RuntimeException(s"Invalid atom body: ${this}")
+      }
+    } else {
+      for(i <- 0 to args.length -1) {
+        getArg(i) match {
+          case c: Var => vars += c
+          case _ =>
+        }
+      }
+      vars
     }
   }
 
@@ -277,6 +310,22 @@ class Fun(sym: String, var args: Array[Term]) extends Const(sym) with LazyLoggin
       val arg = getArg(i)
       result = result * prime + arg.hashCode
     } 
+    result
+  }
+
+  def objectHashCode: Int = {
+    var result = 1
+    val prime = 31
+    result = result * prime + sym.hashCode
+    for(i <- 0 to args.length-1) {
+      val arg = getArg(i)
+      arg match {
+        case v: Var =>
+          result = result * prime + v.objectHashCode
+        case _ =>
+          result = result * prime + arg.hashCode()
+      }
+    }
     result
   }
 
