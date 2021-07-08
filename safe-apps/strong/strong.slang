@@ -16,6 +16,31 @@ defcon addGroupMember(?Group, ?User, ?Delegatable) :-
 
 defpost postGroupMember(?Group, ?User, ?Delegatable) :- [addGroupMember(?Group, ?User, ?Delegatable)].
 
+// 
+// defcon setAdmissionPolicy(?Group, ?PID, ?Endorser) :-
+//   spec("Set admission policy for group"),
+//   ?PolicySet := label(?Endorser, "endorsements/trustPolicy/?PID"),
+//   {
+//     link($PolicySet).
+//     groupAdmissionPolicy($Group, $PID).
+//     trustedEndorserOn("trustPolicy", $Endorser).
+//     label("groups/$Group").
+//   }.
+// 
+
+defcon setMemberPolicy(?Group, ?Property, ?Endorser) :-
+  spec("Set an attestation property for admitted members of this group and link to the trusthub of a trusted endorser"),
+  ?EndorserSet := label(?Endorser, "trusthub"),
+  {
+    link($EndorserSet).
+    memberByAttestedProperty($Group, $Property).
+    trustedEndorserOn($Property, $Endorser).
+    label("groups/$Group").
+  }.
+
+
+defpost postGroupAdmissionPolicy(?Group, ?Property, ?Endorser) :- [setMemberPolicy(?Group, ?Property, ?Endorser)].
+
 defcon delegateGroup(?Group, ?SubGroup, ?Delegatable) :-
   spec('Delegate administration to another group'), (* Membership is granted if membership of sub-group is granted *)
   ?GroupRef := label($Self, "groups/?Group"),
@@ -112,7 +137,7 @@ defcon memberSet() :-
     membership(?Group, ?User, ?Delegatable) :-
       ?GRoot := rootPrincipal(?Group), 
       ?GRoot: groupMember(?Group, ?User, ?Delegatable).
-    
+
     membership(?Group, ?User, ?Delegatable) :-
       ?Delegator: delegateMembership(?User, ?Group, ?Delegatable),
       membership(?Group, ?Delegator, true).
@@ -127,6 +152,24 @@ defcon memberSet() :-
       ?GRoot: nestGroup(?Group, ?SubGroup, false), 
       ?SubGroupRoot := rootPrincipal(?SubGroup),
       ?SubGroupRoot: groupMember(?SubGroup, ?User, ?Delegatable).
+
+//     membership(?Group, ?User, true) :-
+//       ?GRoot := rootPrincipal(?Group),
+//       ?GRoot: memberByAttestedProperty(?Group, ?Property),
+//       hasProperty(?User, ?Property, _).
+
+    membership(?Group, ?Instance, true) :-
+      ?GRoot := rootPrincipal(?Group),
+      ?GRoot: memberByAttestedProperty(?Group, ?Prop),
+      launches(?H, ?Instance, ?Image),
+      memberByAttestation(?Group, ?Instance, ?H).
+
+    memberByAttestation(?Group, ?Instance, ?H) :-
+      ?GRoot := rootPrincipal(?Group),
+      ?GRoot: memberByAttestedProperty(?Group, ?Prop),
+      ?GRoot: trustedEndorserOn(?Prop, ?Endorser),
+      ?Endorser: endorsedConfigSet(?Prop, ?ConfigSetID),
+      checkCompliance(?Instance, ?ConfigSetID, ?H).
 
     label('standard-membership-policy').
   }.

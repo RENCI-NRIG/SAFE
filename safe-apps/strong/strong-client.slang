@@ -9,6 +9,11 @@ defcall postGroupMember(?GroupId, ?SubjectId, ?Delegatable) :-
     postGroupMember($ServerJVM, $ReqEnvs, $GroupId, $SubjectId, $Delegatable).
   }.
 
+defcall postGroupAdmissionPolicy(?GroupId, ?PolicyId, ?TrustEndorser) :-
+  {
+    postGroupAdmissionPolicy($ServerJVM, $ReqEnvs, $GroupId, $PolicyId, ?TrustEndorser).
+  }.
+
 defcall postGroupDelegation(?GroupId, ?SubGroupId, ?Delegatable) :-
   {
     postGroupDelegation($ServerJVM, $ReqEnvs, $GroupId, $SubGroupId, $Delegatable).
